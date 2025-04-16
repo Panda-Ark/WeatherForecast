@@ -4,74 +4,230 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>Weather Forecast Dashboard</title>
-  <link rel="stylesheet" href="styles.css"/>
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css"/>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script> <!-- Chart.js for Graphs -->
+  <style>
+    :root {
+      --bg: #f0f8ff;
+      --text: #1e1e2f;
+      --card: #ffffff;
+      --accent: #4dabf7;
+    }
+
+    body.dark {
+      --bg: #1e1e2f;
+      --text: #f0f8ff;
+      --card: #2a2a40;
+      --accent: #00d4ff;
+    }
+
+    body {
+      margin: 0;
+      padding: 0;
+      background-color: var(--bg);
+      color: var(--text);
+      font-family: 'Segoe UI', sans-serif;
+      transition: all 0.3s ease-in-out;
+      display: flex;
+      justify-content: space-between;
+    }
+
+    .dashboard {
+      max-width: 1200px;
+      margin: auto;
+      padding: 20px;
+      display: flex;
+      justify-content: space-between;
+    }
+
+    .left-side {
+      width: 50%;
+      padding-right: 20px;
+    }
+
+    .right-side {
+      width: 50%;
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 20px;
+    }
+
+    .widget {
+      background-color: var(--card);
+      border-radius: 15px;
+      padding: 25px;
+      text-align: center;
+      box-shadow: 0 6px 16px rgba(0, 0, 0, 0.1);
+      transition: transform 0.2s;
+    }
+
+    .widget:hover {
+      transform: translateY(-5px);
+    }
+
+    .icon {
+      font-size: 2rem;
+      color: var(--accent);
+      margin-bottom: 10px;
+    }
+
+    .widget h3 {
+      font-size: 1.1rem;
+      margin-bottom: 10px;
+    }
+
+    .value {
+      font-size: 1.8rem;
+      font-weight: bold;
+    }
+
+    canvas {
+      width: 100%;
+      height: 200px;
+      margin-top: 10px;
+    }
+
+    /* Pop-up Widget Animation */
+    .widget-content {
+      position: relative;
+      transition: transform 0.3s ease;
+    }
+
+    .widget-content:hover {
+      transform: scale(1.05);
+    }
+
+  </style>
 </head>
 <body>
   <div class="dashboard">
-    <header>
-      <h1>🌤️ Weather Forecast Dashboard</h1>
-      <div class="theme-toggle" onclick="toggleTheme()">
-        <i class="fas fa-moon" id="theme-icon"></i>
-        <span id="theme-label">Dark Mode</span>
-      </div>
-    </header>
+    <div class="left-side">
+      <!-- 24-hour and 1-week Graphs go here -->
+      <h2>24-hour Weather Forecast</h2>
+      <canvas id="hourlyTempChart"></canvas>
+      <canvas id="hourlyHumidityChart"></canvas>
+      <h2>1-week Past Data</h2>
+      <canvas id="weekTempChart"></canvas>
+    </div>
 
-    <section class="widgets">
+    <div class="right-side">
+      <!-- Widgets go here (Temperature, Humidity, etc.) -->
       <div class="widget">
-        <i class="fas fa-thermometer-half icon"></i>
-        <h3>Temperature</h3>
-        <p class="value">-- ℃</p>
+        <i class="fas fa-temperature-low icon"></i>
+        <h3>SHT40 Temp</h3>
+        <p class="value" id="sht40_temperature">-- ℃</p>
       </div>
       <div class="widget">
         <i class="fas fa-droplet icon"></i>
         <h3>Humidity</h3>
-        <p class="value">-- %</p>
+        <p class="value" id="humidity">-- %</p>
       </div>
       <div class="widget">
-        <i class="fas fa-gauge icon"></i>
+        <i class="fas fa-tachometer-alt icon"></i>
         <h3>Pressure</h3>
-        <p class="value">-- hPa</p>
+        <p class="value" id="pressure">-- hPa</p>
       </div>
       <div class="widget">
         <i class="fas fa-sun icon"></i>
         <h3>UV Index</h3>
-        <p class="value">--</p>
+        <p class="value" id="uv_index">--</p>
       </div>
       <div class="widget">
-        <i class="fas fa-radiation icon"></i>
-        <h3>Radiation</h3>
-        <p class="value">-- W/m²</p>
+        <i class="fas fa-smog icon"></i>
+        <h3>Air Quality</h3>
+        <p class="value" id="airquality">-- AQI</p>
       </div>
       <div class="widget">
         <i class="fas fa-lightbulb icon"></i>
         <h3>Light Intensity</h3>
-        <p class="value">-- lux</p>
+        <div class="value" id="ambient_light_ltr390">-- lux</div>
       </div>
-      <div class="widget">
-        <i class="fas fa-smog icon"></i>
-        <h3>Air Purity</h3>
-        <p class="value">-- AQI</p>
-      </div>
-    </section>
+
+    </div>
   </div>
 
-  <script>
-    function toggleTheme() {
-      const body = document.body;
-      const icon = document.getElementById('theme-icon');
-      const label = document.getElementById('theme-label');
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+    import { getDatabase, ref, onValue } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js";
 
-      body.classList.toggle('dark');
-      if (body.classList.contains('dark')) {
-        icon.className = 'fas fa-sun';
-        label.textContent = 'Light Mode';
-      } else {
-        icon.className = 'fas fa-moon';
-        label.textContent = 'Dark Mode';
+    const firebaseConfig = {
+      apiKey: "AIzaSyCRdqRj0H2RaFeH0Xn5Z4_4coLW1LaBfBg",
+      authDomain: "weather-forecasting-23312.firebaseapp.com",
+      databaseURL: "https://weather-forecasting-23312-default-rtdb.asia-southeast1.firebasedatabase.app",
+      projectId: "weather-forecasting-23312",
+      storageBucket: "weather-forecasting-23312.appspot.com",
+      messagingSenderId: "951129535975",
+      appId: "1:951129535975:web:687b2c691be27d2a7ef942",
+      measurementId: "G-611QDB1Y1P"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const database = getDatabase(app);
+
+    // Fetch live data from Firebase
+    const dataRef = ref(database, 'sensor value/Data');
+    onValue(dataRef, (snapshot) => {
+      const data = snapshot.val();
+      if (data) {
+        // Update widgets with live data
+        document.getElementById("sht40_temperature").innerText = `${data.sht40_temperature} ℃`;
+        document.getElementById("humidity").innerText = `${data.humidity} %`;
+        document.getElementById("pressure").innerText = `${data.pressure} hPa`;
+        document.getElementById("uv_index").innerText = `${data.uv_index}`;
+        document.getElementById("airquality").innerText = `${data.airquality} AQI`;
+       document.getElementById("ambient_light_ltr390").textContent = `${data.ambient_light_ltr390} lux`;
       }
-    }
+    });
+
+    // Chart.js for 24-hour and 1-week data graphs
+    const ctx24hTemp = document.getElementById('hourlyTempChart').getContext('2d');
+    const ctx24hHumidity = document.getElementById('hourlyHumidityChart').getContext('2d');
+    const ctxWeekTemp = document.getElementById('weekTempChart').getContext('2d');
+
+    // Sample data for hourly and weekly charts, replace with Firebase data
+    const hourlyTempData = [22, 24, 23, 21, 22, 25, 26];
+    const hourlyHumidityData = [60, 62, 65, 70, 68, 72, 75];
+    const weekTempData = [18, 20, 22, 24, 23, 25, 26];
+
+    new Chart(ctx24hTemp, {
+      type: 'line',
+      data: {
+        labels: ['0h', '1h', '2h', '3h', '4h', '5h', '6h'],  // Add your 24-hour time labels
+        datasets: [{
+          label: 'Temperature (℃)',
+          data: hourlyTempData,
+          borderColor: 'rgb(75, 192, 192)',
+          tension: 0.1
+        }]
+      }
+    });
+
+    new Chart(ctx24hHumidity, {
+      type: 'line',
+      data: {
+        labels: ['0h', '1h', '2h', '3h', '4h', '5h', '6h'],  // Add your 24-hour time labels
+        datasets: [{
+          label: 'Humidity (%)',
+          data: hourlyHumidityData,
+          borderColor: 'rgb(153, 102, 255)',
+          tension: 0.1
+        }]
+      }
+    });
+
+    new Chart(ctxWeekTemp, {
+      type: 'line',
+      data: {
+        labels: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'],  // Add your 1-week days labels
+        datasets: [{
+          label: 'Temperature (℃)',
+          data: weekTempData,
+          borderColor: 'rgb(255, 159, 64)',
+          tension: 0.1
+        }]
+      }
+    });
+
   </script>
-<script type="module" src="script.js"></script>
 </body>
 </html>
